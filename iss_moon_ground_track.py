@@ -6,19 +6,21 @@ import load_tle
 import matplotlib.pyplot as plt
 import cartopy
 import cartopy.crs as ccrs
+import math
 
 def normalize(vector):
     return vector / norm(vector)
-def find_earth_intersect_point(origin,vector,earth_radius):
+def find_earth_intersect_point(origin,vector,earth_radius,length_limit,length_guess = 1):
     #Step 1: Turn that vector into a unit vector. Still pointing same direction.
     unit_vector_toward_ground = normalize(vec_from_moon_to_sat)
     #Step 2: Do a binary search to find required vector length.
     #Step 2a: First, extend the vector over and over until you punch through the earth.
     #Note: This step is risky if the vector is near-tangent with the earth.
     #Only use when you know the vector is coming in roughly vertical to the surface.
-    length_guess = 1 / AU_KM
-    while(norm(origin + unit_vector_toward_ground * length_guess) > RE):
+    while(norm(origin + unit_vector_toward_ground * length_guess) > earth_radius):
         length_guess *= 2
+        if length_guess > length_limit*2:
+            return None    
     #Once we find that number, it's under the earth. That's an upper bound on length.
     length_upper_bound = length_guess
     #Meanwhile, the lower bound is the previous guess, which is just half as long.
@@ -27,7 +29,7 @@ def find_earth_intersect_point(origin,vector,earth_radius):
     #exact required length.
     error = 9999
     #Tolerance of 0.1 km should get us quite close.
-    while(abs(error) > 0.1 / AU_KM):
+    while(abs(error) > 0.1):
         #Standard binary search from here, go higher or lower based on where the guess winds up.
         new_guess = (length_lower_bound + length_upper_bound) / 2
         new_vector_end = norm(origin + unit_vector_toward_ground * new_guess)
@@ -38,13 +40,29 @@ def find_earth_intersect_point(origin,vector,earth_radius):
         error = new_vector_end - RE
     intersection_point = origin + unit_vector_toward_ground * new_guess
 
-    geo = Geocentric(intersection_point,t=t)
+    geo = Geocentric(intersection_point/AU_KM,t=timeval)
     subpoint = wgs84.subpoint(geo)
-    return subpoint.latitude.degrees,subpoint.longitude.degrees
-
+    return subpoint.latitude.degrees,subpoint.longitude.degrees, new_guess
+def find_length_limit(sat_height,horizon_angle):
+    RE = 6371
+    #Lotta geometry to do.
+    horizon_angle += 90
+    horizon_angle *= (math.pi/180)
+    law_of_sines_ratio = math.sin(horizon_angle) / (RE + sat_height)
+    #Now use that to find A, the angle formed by two vectors:
+    #Vector 1 is vector from sat to center of earth, vector 2 is
+    #vector from sat to an observer.
+    #sin(A) / RE = law of sines ratio
+    A = math.asin(law_of_sines_ratio * RE)
+    #Now subtract that from the total triangle being pi.
+    #that gives B, the angle between observer and sat, seen from center of earth.
+    B = math.pi - (A + horizon_angle)
+    #And again, law of sines. sin(B) / limit = ratio.
+    limit = math.sin(B) / law_of_sines_ratio
+    return limit
 ts = load.timescale()
 
-t = ts.utc(2021,10,3,22,51,range(30,151))
+time_range = ts.utc(2021,10,1,0,0,range(0,86400,10))
 
 DURANGO = 37.273267,-107.871692, 2000
 LOS_ANGELES = 34.0,-118.2, 100
@@ -53,8 +71,9 @@ SEATTLE = 47.609722, -122.333056, 100
 CAMBRIDGE = 42.371539,-71.098857, 20
 NYC = 40.712778, -74.006111,20
 
+ANNOTATE = False
 
-RE = norm(wgs84.latlon(*SEATTLE).at(t).position.au)
+RE = 6371
 planets = load('de421.bsp')
 earth = planets['earth']
 moon = planets['moon']
@@ -67,12 +86,7 @@ sat_tle = [
 sat = EarthSatellite(*sat_tle)
 moon = moon - earth
 
-#Get vector from the moon to the satellite; extending this vector will make
-#it run into the earth.
-
-vec_from_moon_to_sat = (sat - moon).at(t).position.au
-lat,long = find_earth_intersect_point(sat.at(t).position.au,vec_from_moon_to_sat,RE)
-
+length_limit = find_length_limit(430,10)
 ax = plt.axes(projection=ccrs.PlateCarree())
 ax.set_facecolor("black")
 ax.add_feature(cartopy.feature.COASTLINE,edgecolor='lightgreen')
@@ -83,27 +97,46 @@ states_provinces = cartopy.feature.NaturalEarthFeature(
     edgecolor='lightgreen',facecolor='none')
 ax.add_feature(cartopy.feature.BORDERS,edgecolor='lightgreen')
 ax.add_feature(states_provinces)
-ax.set_extent(
-    [min(long) - 2,
-     max(long) + 2,
-     min(lat) - 2,
-     max(lat) + 2],
-    crs=ccrs.PlateCarree())
-#Plot initial location
-ax.plot(long,lat,transform=ccrs.PlateCarree())
-#Now for the good stuff: Labeling.
-long_labels = long[::10]
-lat_labels = lat[::10]
-label_times = t[::10]
-labels = zip(label_times,long_labels,lat_labels)
-for l in labels:
-    timetext = l[0].utc_strftime("%H:%M:%S")
-    ax.annotate(timetext,
-                (l[1],l[2]),
-                textcoords="offset points",
-                xytext=(5,-5),
-                color="w",
-                transform=ccrs.PlateCarree())
-ax.scatter(long_labels,lat_labels,marker=".",transform=ccrs.PlateCarree())
+
+#Get vector from the moon to the satellite; extending this vector will make
+#it run into the earth.
+lats = []
+longs = []
+datapoints = []
+all_lines = []
+last_length = 1
+for timeval in time_range:
+    vec_from_moon_to_sat = (sat - moon).at(timeval).position.km
+    result = find_earth_intersect_point(sat.at(timeval).position.km,vec_from_moon_to_sat,RE,length_limit,length_guess = last_length)
+    if result is not None:
+        lat_result,lon_result, last_length = result
+    #Should we plot?
+    if result is None or timeval == time_range[-1] or (len(longs) > 0 and lon_result - longs[-1] < -300):
+        if len(datapoints) > 1:
+            if ANNOTATE:
+                for dp in datapoints:
+                    timetext = dp[2].utc_strftime("%H:%M:%S")
+                    ax.annotate(timetext,
+                            (dp[1],dp[0]),
+                            textcoords="offset points",
+                            xytext=(5,-5),
+                            color="w",
+                            transform=ccrs.PlateCarree())
+            plotlats,plotlons = list(zip(*datapoints))[:2]
+            plotline = ax.plot(plotlons,plotlats,color="w",transform=ccrs.PlateCarree())
+            datapoints = []
+    if result is not None:
+        lats.append(lat_result)
+        longs.append(lon_result)
+        datapoints.append([lat_result,lon_result,timeval])
+if ANNOTATE:
+    ax.set_extent(
+        [min(longs) - 2,
+         max(longs) + 2,
+         min(lats) - 2,
+         max(lats) + 2],
+        crs=ccrs.PlateCarree())
+else:
+    ax.set_extent([-180,180,-90,90])
 
 plt.show()
