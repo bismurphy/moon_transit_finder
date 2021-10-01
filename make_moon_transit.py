@@ -16,6 +16,7 @@ from matplotlib.widgets import Slider, Button
 import cartopy
 import cartopy.crs as ccrs
 import requests
+import load_tle
 
 STAR_MAG_LIMIT = 3
 SAT_SIZE = 0.1 #size to draw sats on starmap
@@ -25,7 +26,7 @@ BOULDER = 40.015, -105.270556,1655
 SEATTLE = 47.609722, -122.333056, 100
 CAMBRIDGE = 42.371539,-71.098857, 20
 
-INIT_LAT,INIT_LON, ELEVATION = CAMBRIDGE
+INIT_LAT,INIT_LON, ELEVATION = SEATTLE
 
 LAT_RANGE = 2
 LON_RANGE = 2
@@ -33,26 +34,29 @@ LON_RANGE = 2
 TIME_SLIDER_RANGE = 60
 
 
-TIME = [2021, 9, 24, 0, 0,0] #Remember to use UTC!
+TIME = [2021, 10, 2, 0, 0,0] #Remember to use UTC!
+
 DURATION = 3 #days to search through
 
 SAT_IMAGE = plt.imread('iss_white.png')
 MOON_IMAGE = plt.imread('moon.png')
+image_extent = 0.2
 
 def setup_plot():
     axes[0].set_facecolor("black")
-    axes[0].set_xlim(0,360)
-    axes[0].set_ylim(0,90)
     axes[1].set_facecolor("black")
 
 
     plt.subplots_adjust(bottom=0.1,left=0.1,top=0.9,right=1,wspace=0)
     global time_slider
+    slider_min = PLOT_TIME.tt - TIME_SLIDER_RANGE/86400
+    slider_max = PLOT_TIME.tt + TIME_SLIDER_RANGE/86400
     time_slider = Slider(
         ax=plt.axes([0.2, 0.05, 0.6, 0.03],facecolor='k'),
         label="Time",
-        valmin=PLOT_TIME.tt - TIME_SLIDER_RANGE/86400,
-        valmax=PLOT_TIME.tt + TIME_SLIDER_RANGE/86400,
+        valmin=slider_min,
+        valmax=slider_max,
+        valstep = np.linspace(slider_min,slider_max,TIME_SLIDER_RANGE*2+1),
         valinit = PLOT_TIME.tt,#Start at the current second in our minute
         )
     time_slider.valtext.set_text(PLOT_TIME.utc_strftime("%Y-%m-%d\n%H:%M:%S"))
@@ -87,7 +91,8 @@ def setup_plot():
     #axes[1].add_feature(cartopy.feature.LAND)
     axes[1].add_feature(cartopy.feature.COASTLINE,edgecolor='lightgreen')
     axes[1].add_feature(states_provinces)
-    axes[1].plot([LONGITUDE],[LATITUDE],'go',markersize=4,transform=ccrs.PlateCarree())
+    #Plot initial location
+    axes[1].plot([LONGITUDE],[LATITUDE],'yo',markersize=10,transform=ccrs.PlateCarree())
    
     
     return [time_slider,latitude_slider,longitude_slider]
@@ -106,9 +111,8 @@ def get_stars_with_names(mag_limit=100):
                 star_names.append("HIP " + str(star))
     return Star.from_dataframe(df_filtered), star_names, df_filtered['magnitude']
 def plot_stamp(target_x, target_y, target_image, size,zorder=0.5):
-    print(target_x,target_y)
-    #Gets vector from sat to sun and converts to radec
     image_extent = [target_x - size, target_x + size,target_y - size, target_y + size]
+    #Gets vector from sat to sun and converts to radec
     return axes[0].imshow(target_image,extent=image_extent,zorder=zorder)
 def plot_sat(TLE, image, timestamp):
     global LATITUDE,LONGITUDE
@@ -131,7 +135,9 @@ def plot_moon(image,timestamp):
     moon_angular_radius = np.arcsin(1737.4/dist.km)*180/np.pi #moon radius
     moon_phase = get_moon_phase(ground, moon, sun,timestamp)
     moonmask = draw_moonmask(moon_phase,moon_angular_radius,az.degrees, alt.degrees)
-    return plot_stamp(az.degrees, alt.degrees, image, moon_angular_radius), moonmask
+    crosshair = plot_stamp(az.degrees,alt.degrees,plt.imread('crosshair.png'),5)
+    print(az.degrees,alt.degrees)
+    return plot_stamp(az.degrees, alt.degrees, image, moon_angular_radius), moonmask,crosshair
 def get_moon_phase(observer,moon,sun,time):
     sun_longitude = (sun - observer).at(time).frame_latlon(ecliptic_frame)[1]
     moon_longitude = (moon - observer).at(time).frame_latlon(ecliptic_frame)[1]
@@ -183,16 +189,33 @@ def update_plot(timestamp):
             i = i[0]
         i.remove()
     starfield = plot_starfield(timestamp)
-    iss_stamp = plot_sat(sat_tle, SAT_IMAGE, timestamp)
-    moon_stamp = plot_moon(MOON_IMAGE,timestamp)
+    iss_trail_and_stamp = plot_sat(sat_tle, SAT_IMAGE, timestamp)
+    moon_stamp_and_mask = plot_moon(MOON_IMAGE,timestamp)
     map_marker = update_map()
-    plotted_objects = [starfield,*iss_stamp,*moon_stamp,map_marker]
+    if len(plotted_objects) == 0:
+        iss_extent = iss_trail_and_stamp[1].get_extent()
+        moon_extent = moon_stamp_and_mask[0].get_extent()
+        iss_xvals = iss_extent[0:2]
+        iss_yvals = iss_extent[2:4]
+        moon_xvals = moon_extent[0:2]
+        moon_yvals = moon_extent[2:4]
+
+        minx = min(*iss_xvals,*moon_xvals)-10
+        maxx = max(*iss_xvals,*moon_xvals)+10
+        miny = min(*iss_yvals,*moon_yvals)-10
+        maxy = max(*iss_yvals,*moon_yvals)+10
+
+        axes[0].set_xlim(minx,maxx)
+        axes[0].set_ylim(miny,maxy)
+    plotted_objects = [starfield,*iss_trail_and_stamp,*moon_stamp_and_mask,map_marker]
 def update_map():
     global LATITUDE,LONGITUDE
-    return axes[1].plot([LONGITUDE],[LATITUDE],'ro',markersize=4,transform=ccrs.PlateCarree())
+    print(LATITUDE,LONGITUDE)
+    return axes[1].plot([LONGITUDE],[LATITUDE],'rX',markersize=10,transform=ccrs.PlateCarree())
 
 def time_update(slider_position):
     global PLOT_TIME
+    print(slider_position*86400)
     PLOT_TIME = ts.tt_jd(slider_position)
     time_slider.valtext.set_text(PLOT_TIME.utc_strftime("%Y-%m-%d\n%H:%M:%S"))
     update_plot(PLOT_TIME)#And now replot everything.
@@ -248,7 +271,11 @@ def angular_separation(alt1,alt2,az1,az2):
     sinprod = np.sin(np.pi/2 - alt1) * np.sin(np.pi/2 - alt2)
     sinprod = sinprod * np.cos(az1 - az2)
     return np.arccos(cosprod + sinprod)
-
+#Take a skyfield time object with floating seconds and round to nearest int second
+def round_seconds(skyfield_time):
+    time_utc = list(skyfield_time.utc)
+    time_utc[5] = round(time_utc[5])
+    return ts.utc(*time_utc)
 fig = plt.figure()
 axes = [None,None]
 axes[0] = fig.add_subplot(1,2,1)
@@ -262,11 +289,9 @@ earth = planets['earth']
 moon = planets['moon']
 sun = planets['sun']
 
-session = requests.session()
-page = session.get("https://www.celestrak.com/satcat/tle.php?CATNR=25544")
-sat_tle = page.text[:-2].split("\r\n")[1:]
-
-PLOT_TIME = find_closest_approach(sat_tle)
+sat_tle = load_tle.get_tle(25544)
+raw_closest = find_closest_approach(sat_tle)
+PLOT_TIME = round_seconds(raw_closest)
 sliders = setup_plot()#assign to variable to keep them alive
 
 
