@@ -62,7 +62,7 @@ def find_length_limit(sat_height,horizon_angle):
     return limit
 ts = load.timescale()
 
-time_range = ts.utc(2021,10,1,0,0,range(0,86400,10))
+time_range = ts.utc(2021,10,1,0,0,range(0,86400*30,10))
 
 ANNOTATE = False
 
@@ -105,7 +105,7 @@ for timeval in time_range:
         lat_result,lon_result, last_length = result
     #Should we plot?
     if result is None or timeval == time_range[-1] or (len(longs) > 0 and lon_result - longs[-1] < -300):
-        if len(datapoints) > 1:
+        if len(datapoints) > 0:
             if ANNOTATE:
                 for dp in datapoints:
                     timetext = dp[2].utc_strftime("%H:%M:%S")
@@ -122,6 +122,7 @@ for timeval in time_range:
         lats.append(lat_result)
         longs.append(lon_result)
         datapoints.append([lat_result,lon_result,timeval])
+
 if ANNOTATE:
     ax.set_extent(
         [min(longs) - 2,
