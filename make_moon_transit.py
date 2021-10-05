@@ -17,6 +17,7 @@ import cartopy
 import cartopy.crs as ccrs
 import requests
 import load_tle
+import iss_moon_ground_track
 
 STAR_MAG_LIMIT = 3
 SAT_SIZE = 0.1 #size to draw sats on starmap
@@ -27,7 +28,8 @@ SEATTLE = 47.609722, -122.333056, 100
 CAMBRIDGE = 42.371539,-71.098857, 20
 NYC = 40.712778, -74.006111,20
 
-INIT_LAT,INIT_LON, ELEVATION = SEATTLE
+INIT_LAT,INIT_LON, ELEVATION = CAMBRIDGE
+sat_tle = load_tle.get_tle(25544)
 
 LAT_RANGE = 2
 LON_RANGE = 2
@@ -35,9 +37,9 @@ LON_RANGE = 2
 TIME_SLIDER_RANGE = 60
 
 
-TIME = [2021, 10, 2, 0, 0,0] #Remember to use UTC!
+TIME = [2021, 10, 11, 0, 0,0] #Remember to use UTC!
 
-DURATION = 3 #days to search through
+DURATION = 1 #days to search through
 
 SAT_IMAGE = plt.imread('iss_white.png')
 MOON_IMAGE = plt.imread('moon.png')
@@ -94,7 +96,6 @@ def setup_plot():
     axes[1].add_feature(states_provinces)
     #Plot initial location
     axes[1].plot([LONGITUDE],[LATITUDE],'yo',markersize=10,transform=ccrs.PlateCarree())
-   
     
     return [time_slider,latitude_slider,longitude_slider]
 def get_stars_with_names(mag_limit=100):
@@ -242,7 +243,8 @@ def find_closest_approach(tle):
         event_type = i[1]
         if event_type == 0:
             last_start = event_time
-        if event_type == 2:
+        #double check that we've had a start
+        if event_type == 2 and last_start != 0:
             passes.append([last_start,event_time])
     closest_moon_dist = 9999
     closest_moon_time = 0
@@ -277,6 +279,7 @@ def round_seconds(skyfield_time):
     time_utc = list(skyfield_time.utc)
     time_utc[5] = round(time_utc[5])
     return ts.utc(*time_utc)
+
 fig = plt.figure()
 axes = [None,None]
 axes[0] = fig.add_subplot(1,2,1)
@@ -290,11 +293,13 @@ earth = planets['earth']
 moon = planets['moon']
 sun = planets['sun']
 
-sat_tle = load_tle.get_tle(25544)
 raw_closest = find_closest_approach(sat_tle)
 PLOT_TIME = round_seconds(raw_closest)
 sliders = setup_plot()#assign to variable to keep them alive
-
+sat = EarthSatellite(*sat_tle)
+timerange = np.linspace(PLOT_TIME.tt - 60/86400, PLOT_TIME.tt + 60/86400,13)
+timerange = [ts.tt_jd(value) for value in timerange]
+draw_line_on_map = iss_moon_ground_track.draw_plot(axes[1],sat,moon - earth, timerange)
 
 
 global plotted_objects
