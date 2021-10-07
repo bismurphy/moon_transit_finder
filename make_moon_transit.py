@@ -28,7 +28,10 @@ SEATTLE = 47.609722, -122.333056, 100
 CAMBRIDGE = 42.371539,-71.098857, 20
 NYC = 40.712778, -74.006111,20
 
-INIT_LAT,INIT_LON, ELEVATION = CAMBRIDGE
+OBS1 =   41.600121, -70.901738  , 0
+OBS2 = 41.591638, -70.901611, 0
+OBS3 = 41.539012, -70.945050,0
+INIT_LAT,INIT_LON, ELEVATION = OBS3
 sat_tle = load_tle.get_tle(25544)
 
 LAT_RANGE = 2
@@ -297,7 +300,7 @@ raw_closest = find_closest_approach(sat_tle)
 PLOT_TIME = round_seconds(raw_closest)
 sliders = setup_plot()#assign to variable to keep them alive
 sat = EarthSatellite(*sat_tle)
-timerange = np.linspace(PLOT_TIME.tt - 60/86400, PLOT_TIME.tt + 60/86400,13)
+timerange = np.linspace(PLOT_TIME.tt - 60/86400, PLOT_TIME.tt + 60/86400,25)
 timerange = [ts.tt_jd(value) for value in timerange]
 draw_line_on_map = iss_moon_ground_track.draw_plot(axes[1],sat,moon - earth, timerange)
 
@@ -305,8 +308,5 @@ draw_line_on_map = iss_moon_ground_track.draw_plot(axes[1],sat,moon - earth, tim
 global plotted_objects
 plotted_objects = []
 update_plot(PLOT_TIME)
-
-
-
 
 plt.show()
