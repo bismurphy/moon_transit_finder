@@ -31,7 +31,7 @@ NYC = 40.712778, -74.006111,20
 OBS1 =   41.600121, -70.901738  , 0
 OBS2 = 41.591638, -70.901611, 0
 OBS3 = 41.539012, -70.945050,0
-INIT_LAT,INIT_LON, ELEVATION = OBS3
+INIT_LAT,INIT_LON, ELEVATION = CAMBRIDGE
 sat_tle = load_tle.get_tle(25544)
 
 LAT_RANGE = 2
@@ -40,7 +40,7 @@ LON_RANGE = 2
 TIME_SLIDER_RANGE = 60
 
 
-TIME = [2021, 10, 11, 0, 0,0] #Remember to use UTC!
+TIME = [2021, 10, 12, 0, 0,0] #Remember to use UTC!
 
 DURATION = 1 #days to search through
 
@@ -253,7 +253,7 @@ def find_closest_approach(tle):
     closest_moon_time = 0
     for p in passes:
         alts = []
-        azes = []
+        azes = []	
         drawtime = p[0]
         while(drawtime.tt < p[1].tt):
             drawtime = ts.tt_jd(drawtime.tt + 1/86400)
@@ -297,6 +297,7 @@ moon = planets['moon']
 sun = planets['sun']
 
 raw_closest = find_closest_approach(sat_tle)
+print(raw_closest)
 PLOT_TIME = round_seconds(raw_closest)
 sliders = setup_plot()#assign to variable to keep them alive
 sat = EarthSatellite(*sat_tle)
