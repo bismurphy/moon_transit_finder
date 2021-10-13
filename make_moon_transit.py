@@ -26,13 +26,11 @@ LOS_ANGELES = 34.0,-118.2, 100
 BOULDER = 40.015, -105.270556,1655
 SEATTLE = 47.609722, -122.333056, 100
 CAMBRIDGE = 42.371539,-71.098857, 20
+WHOI = 41.525089, -70.672410,0
 NYC = 40.712778, -74.006111,20
 
-OBS1 =   41.600121, -70.901738  , 0
-OBS2 = 41.591638, -70.901611, 0
-OBS3 = 41.539012, -70.945050,0
-INIT_LAT,INIT_LON, ELEVATION = CAMBRIDGE
-sat_tle = load_tle.get_tle(25544)
+INIT_LAT,INIT_LON, ELEVATION = WHOI
+sat_tle = load_tle.get_tle(25544,0.5)
 
 LAT_RANGE = 2
 LON_RANGE = 2
@@ -40,9 +38,9 @@ LON_RANGE = 2
 TIME_SLIDER_RANGE = 60
 
 
-TIME = [2021, 10, 12, 0, 0,0] #Remember to use UTC!
+TIME = [2021, 10, 22, 0, 0,0] #Remember to use UTC!
 
-DURATION = 1 #days to search through
+DURATION = 3 #days to search through
 
 SAT_IMAGE = plt.imread('iss_white.png')
 MOON_IMAGE = plt.imread('moon.png')
@@ -266,6 +264,8 @@ def find_closest_approach(tle):
             if moon_dist < closest_moon_dist and alt.degrees > 10 and moon_alt.degrees > 10:
                 closest_moon_dist = moon_dist
                 closest_moon_time = drawtime
+    if closest_moon_time == 0:
+        return None
     return closest_moon_time
 def angular_separation(alt1,alt2,az1,az2):
     alt1 = alt1.radians
