@@ -13,8 +13,7 @@ from matplotlib.patches import Polygon
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.widgets import Slider, Button
-import cartopy
-import cartopy.crs as ccrs
+from mpl_toolkits.basemap import Basemap
 import requests
 import load_tle
 import iss_moon_ground_track
@@ -29,7 +28,7 @@ CAMBRIDGE = 42.371539,-71.098857, 20
 WHOI = 41.525089, -70.672410,0
 NYC = 40.712778, -74.006111,20
 
-INIT_LAT,INIT_LON, ELEVATION = WHOI
+INIT_LAT,INIT_LON, ELEVATION = CAMBRIDGE
 sat_tle = load_tle.get_tle(25544,0.5)
 
 LAT_RANGE = 2
@@ -38,7 +37,7 @@ LON_RANGE = 2
 TIME_SLIDER_RANGE = 60
 
 
-TIME = [2021, 10, 22, 0, 0,0] #Remember to use UTC!
+TIME = [2022, 7, 18, 0, 0,0] #Remember to use UTC!
 
 DURATION = 3 #days to search through
 
