@@ -17,7 +17,7 @@ def get_tle(ID_number, acceptable_age = 3):
         current_day_of_year = datetime.utcnow().timetuple().tm_yday
         current_epoch_day = str(current_year) + str(current_day_of_year)
         loaded_tle_epoch = "20" + loaded_tle[0][18:23]
-        tle_age = int(current_epoch_day) - int(loaded_tle_epoch)
+        tle_age = float(current_epoch_day) - float(loaded_tle_epoch)
         if tle_age > acceptable_age:
             print("Re-fetching old TLE")
             return web_retrieve_tle(ID_number)
@@ -33,4 +33,3 @@ def web_retrieve_tle(ID_number):
 
 if __name__ == "__main__":
     print(get_tle(25544))
-        

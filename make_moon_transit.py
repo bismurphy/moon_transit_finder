@@ -13,37 +13,11 @@ from matplotlib.patches import Polygon
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.widgets import Slider, Button
-from mpl_toolkits.basemap import Basemap
-import requests
+import cartopy
+import cartopy.crs as ccrs
 import load_tle
 import iss_moon_ground_track
-
-STAR_MAG_LIMIT = 3
-SAT_SIZE = 0.1 #size to draw sats on starmap
-DURANGO = 37.273267,-107.871692, 2000
-LOS_ANGELES = 34.0,-118.2, 100
-BOULDER = 40.015, -105.270556,1655
-SEATTLE = 47.609722, -122.333056, 100
-CAMBRIDGE = 42.371539,-71.098857, 20
-WHOI = 41.525089, -70.672410,0
-NYC = 40.712778, -74.006111,20
-
-INIT_LAT,INIT_LON, ELEVATION = CAMBRIDGE
-sat_tle = load_tle.get_tle(25544,0.5)
-
-LAT_RANGE = 2
-LON_RANGE = 2
-#seconds you can scroll before and after start time
-TIME_SLIDER_RANGE = 60
-
-
-TIME = [2022, 7, 18, 0, 0,0] #Remember to use UTC!
-
-DURATION = 3 #days to search through
-
-SAT_IMAGE = plt.imread('iss_white.png')
-MOON_IMAGE = plt.imread('moon.png')
-image_extent = 0.2
+from scipy.optimize import minimize
 
 def setup_plot():
     axes[0].set_facecolor("black")
@@ -90,13 +64,11 @@ def setup_plot():
         name='admin_1_states_provinces_lines',
         scale='110m',
         edgecolor='lightgreen',facecolor='none')
-    
     #axes[1].add_feature(cartopy.feature.LAND)
     axes[1].add_feature(cartopy.feature.COASTLINE,edgecolor='lightgreen')
     axes[1].add_feature(states_provinces)
     #Plot initial location
     axes[1].plot([LONGITUDE],[LATITUDE],'yo',markersize=10,transform=ccrs.PlateCarree())
-    
     return [time_slider,latitude_slider,longitude_slider]
 def get_stars_with_names(mag_limit=100):
     with load.open(hipparcos.URL) as f:
@@ -229,43 +201,46 @@ def longitude_update(slider_position):
     global LONGITUDE
     LONGITUDE = slider_position
     update_plot(PLOT_TIME)#And now replot everything.
+def dist_at_time(sat, sky_obj,obs,time_at):
+    time_at = ts.tt_jd(time_at)
+    sat_alt,sat_az,_ = (sat - obs).at(time_at).altaz()
+    obj_alt,obj_az,_ = (moon - (earth+obs)).at(time_at).altaz()
+
+    return angular_separation(sat_alt,obj_alt,sat_az,obj_az)
 def find_closest_approach(tle):
     global LATITUDE,LONGITUDE
     sat = EarthSatellite(*tle)
     observer = Topos(LATITUDE,LONGITUDE, elevation_m = ELEVATION)
-    start = ts.utc(*TIME)
-    end = ts.tt_jd(start.tt + DURATION)
-    times_and_events = sat.find_events(observer, start, end)
+    times_and_events = sat.find_events(observer, ts.utc(*TIME), ts.tt_jd(ts.utc(*TIME).tt + DURATION))
     passes = []
     last_start = 0
     for i in zip(*times_and_events):
         event_time = i[0]
         event_type = i[1]
-        if event_type == 0:
+        if event_type == 0: #if event is a pass starting
             last_start = event_time
         #double check that we've had a start
-        if event_type == 2 and last_start != 0:
-            passes.append([last_start,event_time])
-    closest_moon_dist = 9999
-    closest_moon_time = 0
+        if event_type == 2 and last_start != 0: #if event is a pass finishing
+            this_pass = {'start':last_start,'end':event_time}
+            passes.append(this_pass)
+    best_pass = None
+    print("Iterating passes")
     for p in passes:
-        alts = []
-        azes = []	
-        drawtime = p[0]
-        while(drawtime.tt < p[1].tt):
-            drawtime = ts.tt_jd(drawtime.tt + 1/86400)
-            alt,az,_ = (sat - observer).at(drawtime).altaz()
-            moon_alt,moon_az,_ = (moon - (earth+observer)).at(drawtime).altaz()
-            if moon_alt.degrees < 5:
-                break #break out if the moon is crazy low for this pass
-            #this is not proper math but good enough heuristic for now
-            moon_dist = angular_separation(alt,moon_alt,az,moon_az)
-            if moon_dist < closest_moon_dist and alt.degrees > 10 and moon_alt.degrees > 10:
-                closest_moon_dist = moon_dist
-                closest_moon_time = drawtime
-    if closest_moon_time == 0:
-        return None
-    return closest_moon_time
+        closest_moon_dist = 9999
+        closest_moon_time = 0
+        pass_start = p['start'].tt
+        pass_end = p['end'].tt
+        print("Test min")
+        closest = minimize(lambda x:dist_at_time(sat,moon,observer,x),
+                          (pass_start + pass_end)/2,
+                          bounds=((pass_start,pass_end),))
+        print("done testmin")
+        if best_pass is None or closest.fun < best_pass['dist']:
+            p['dist'] = closest.fun
+            p['best_time'] = ts.tt_jd(closest.x[0])
+            best_pass = p
+    print("Done")
+    return best_pass['best_time']
 def angular_separation(alt1,alt2,az1,az2):
     alt1 = alt1.radians
     alt2 = alt2.radians
@@ -281,32 +256,56 @@ def round_seconds(skyfield_time):
     time_utc = list(skyfield_time.utc)
     time_utc[5] = round(time_utc[5])
     return ts.utc(*time_utc)
+if __name__ == "__main__":
+    STAR_MAG_LIMIT = 3
+    SAT_SIZE = 0.1 #size to draw sats on starmap
+    DURANGO = 37.273267,-107.871692, 2000
+    LOS_ANGELES = 34.0,-118.2, 100
+    BOULDER = 40.015, -105.270556,1655
+    SEATTLE = 47.609722, -122.333056, 100
+    CAMBRIDGE = 42.371539,-71.098857, 20
+    WHOI = 41.525089, -70.672410,0
+    NYC = 40.712778, -74.006111,20
 
-fig = plt.figure()
-axes = [None,None]
-axes[0] = fig.add_subplot(1,2,1)
-axes[1] = fig.add_subplot(1,2,2, projection=ccrs.PlateCarree())
+    INIT_LAT,INIT_LON, ELEVATION = CAMBRIDGE
+    sat_tle = load_tle.get_tle(25544)
 
-ts = load.timescale()
-global PLOT_TIME, LATITUDE, LONGITUDE
-LATITUDE, LONGITUDE = INIT_LAT, INIT_LON
-planets = load('de421.bsp')
-earth = planets['earth']
-moon = planets['moon']
-sun = planets['sun']
-
-raw_closest = find_closest_approach(sat_tle)
-print(raw_closest)
-PLOT_TIME = round_seconds(raw_closest)
-sliders = setup_plot()#assign to variable to keep them alive
-sat = EarthSatellite(*sat_tle)
-timerange = np.linspace(PLOT_TIME.tt - 60/86400, PLOT_TIME.tt + 60/86400,25)
-timerange = [ts.tt_jd(value) for value in timerange]
-draw_line_on_map = iss_moon_ground_track.draw_plot(axes[1],sat,moon - earth, timerange)
+    LAT_RANGE = 2
+    LON_RANGE = 2
+    #seconds you can scroll before and after start time
+    TIME_SLIDER_RANGE = 60
 
 
-global plotted_objects
-plotted_objects = []
-update_plot(PLOT_TIME)
+    TIME = [2022, 7, 18, 0, 0,0] #Remember to use UTC!
 
-plt.show()
+    DURATION = 10 #days to search through
+
+    SAT_IMAGE = plt.imread('iss_white.png')
+    MOON_IMAGE = plt.imread('moon.png')
+    image_extent = 0.2
+    fig = plt.figure()
+    axes = [None,None]
+    axes[0] = fig.add_subplot(1,2,1)
+    axes[1] = fig.add_subplot(1,2,2, projection=ccrs.PlateCarree())
+
+    ts = load.timescale()
+    global PLOT_TIME, LATITUDE, LONGITUDE
+    LATITUDE, LONGITUDE = INIT_LAT, INIT_LON
+    planets = load('de421.bsp')
+    earth = planets['earth']
+    moon = planets['moon']
+    sun = planets['sun']
+    raw_closest = find_closest_approach(sat_tle)
+    print(raw_closest)
+    PLOT_TIME = round_seconds(raw_closest)
+    sliders = setup_plot()#assign to variable to keep them alive
+    sat = EarthSatellite(*sat_tle)
+    timerange = np.linspace(PLOT_TIME.tt - 60/86400, PLOT_TIME.tt + 60/86400,25)
+    timerange = [ts.tt_jd(value) for value in timerange]
+    draw_line_on_map = iss_moon_ground_track.draw_plot(axes[1],sat,moon - earth, timerange)
+
+    global plotted_objects
+    plotted_objects = []
+    update_plot(PLOT_TIME)
+
+    plt.show()

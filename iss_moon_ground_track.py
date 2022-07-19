@@ -97,7 +97,7 @@ def draw_plot(matplotlib_axis, satellite, moon, timerange, annotate_line = True)
 
 if __name__ == "__main__":   
     ts = load.timescale()
-    time_range = ts.utc(2021,10,11,21,36,range(0,60,10))
+    time_range = ts.utc(2022,7,20,3,42,range(0,60,10))
 
     planets = load('de421.bsp')
     earth = planets['earth']
