@@ -13,11 +13,10 @@ from matplotlib.patches import Polygon
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.widgets import Slider, Button
-import cartopy
-import cartopy.crs as ccrs
 import load_tle
 import iss_moon_ground_track
 from scipy.optimize import minimize
+from mpl_toolkits.basemap import Basemap
 
 def setup_plot():
     axes[0].set_facecolor("black")
@@ -53,22 +52,10 @@ def setup_plot():
         valmax=INIT_LON + LAT_RANGE,
         valinit=INIT_LON)
     longitude_slider.on_changed(longitude_update)
-    extent = [
-        INIT_LON-LON_RANGE,
-        INIT_LON+LON_RANGE,
-        INIT_LAT-LAT_RANGE,
-        INIT_LAT+LAT_RANGE]
-    axes[1].set_extent(extent,crs=ccrs.PlateCarree())
-    states_provinces = cartopy.feature.NaturalEarthFeature(
-        category='cultural',
-        name='admin_1_states_provinces_lines',
-        scale='110m',
-        edgecolor='lightgreen',facecolor='none')
-    #axes[1].add_feature(cartopy.feature.LAND)
-    axes[1].add_feature(cartopy.feature.COASTLINE,edgecolor='lightgreen')
-    axes[1].add_feature(states_provinces)
+    map = Basemap(projection='cyl',llcrnrlat=INIT_LAT-LAT_RANGE,urcrnrlat=INIT_LAT+LAT_RANGE,llcrnrlon=INIT_LON-LON_RANGE,urcrnrlon=INIT_LON+LON_RANGE,resolution='i',ax=axes[1])
+    map.drawcoastlines(color='w')
     #Plot initial location
-    axes[1].plot([LONGITUDE],[LATITUDE],'yo',markersize=10,transform=ccrs.PlateCarree())
+    map.scatter([LONGITUDE],[LATITUDE],10,marker='o',color='y')
     return [time_slider,latitude_slider,longitude_slider]
 def get_stars_with_names(mag_limit=100):
     with load.open(hipparcos.URL) as f:
@@ -89,7 +76,7 @@ def plot_stamp(target_x, target_y, target_image, size,zorder=0.5):
     #Gets vector from sat to sun and converts to radec
     return axes[0].imshow(target_image,extent=image_extent,zorder=zorder)
 def plot_sat(TLE, image, timestamp):
-    global LATITUDE,LONGITUDE
+    global LATITUDE,LONGITUDEplot_actual_size
     sat = EarthSatellite(*TLE)
     ground = Topos(LATITUDE, LONGITUDE, elevation_m = ELEVATION)
     alt,az,dist = (sat - ground).at(timestamp).altaz()
@@ -98,8 +85,14 @@ def plot_sat(TLE, image, timestamp):
     a_bit_ago = ts.tt_jd(timestamp.tt -10/86400)
 
     prev_alt,prev_az,prev_dist = (sat - ground).at(a_bit_ago).altaz()
+    print(prev_dist.km)
     trail = axes[0].plot([prev_az.degrees,az.degrees],[prev_alt.degrees,alt.degrees],color='w')
-    stamp = plot_stamp(az.degrees, alt.degrees, image, SAT_SIZE,zorder=0.6)
+    if (plot_actual_size):
+        iss_actual_angular_size = 2*np.arctan2(0.109/2,prev_dist.km)#station length is 109 m, 
+        stamp_size = np.rad2deg(iss_actual_angular_size)
+    else:
+        stamp_size = SAT_SIZE
+    stamp = plot_stamp(az.degrees, alt.degrees, image, stamp_size,zorder=0.6)
     return [trail,stamp]
 def plot_moon(image,timestamp):
     global LATITUDE,LONGITUDE
@@ -165,7 +158,7 @@ def update_plot(timestamp):
     starfield = plot_starfield(timestamp)
     iss_trail_and_stamp = plot_sat(sat_tle, SAT_IMAGE, timestamp)
     moon_stamp_and_mask = plot_moon(MOON_IMAGE,timestamp)
-    map_marker = update_map()
+    map_objects = update_map()
     if len(plotted_objects) == 0:
         iss_extent = iss_trail_and_stamp[1].get_extent()
         moon_extent = moon_stamp_and_mask[0].get_extent()
@@ -181,11 +174,36 @@ def update_plot(timestamp):
 
         axes[0].set_xlim(minx,maxx)
         axes[0].set_ylim(miny,maxy)
-    plotted_objects = [starfield,*iss_trail_and_stamp,*moon_stamp_and_mask,map_marker]
+    plotted_objects = [starfield,*iss_trail_and_stamp,*moon_stamp_and_mask,*map_objects]
+def plot_rainier(rainier_lat,rainier_lon):
+    line_to_rainier = axes[1].plot([LONGITUDE, rainier_lon],[LATITUDE,rainier_lat],'g',transform=ccrs.PlateCarree())
+    #annotate line with the direction to Rainier
+    deltalat = np.deg2rad(LATITUDE - rainier_lat)
+    deltalon = np.deg2rad(LONGITUDE - rainier_lon)
+    #spherical trig. Add pi to account for shifted zero-point stuff
+    heading = np.pi+np.arctan2(np.tan(deltalon),np.sin(deltalat))
+    heading = np.rad2deg(heading)
+    a = np.sin(deltalat/2)**2 + np.cos(np.deg2rad(rainier_lat)) * np.cos(np.deg2rad(LATITUDE)) * np.sin(deltalon/2)**2
+    c = 2 * np.arcsin(np.sqrt(a))
+    distance = c * 6371 #angle in radians, multiply by radius of earth for distance
+    annotation_string = str(round(heading)) + ", " + str(round(distance))
+    heading_label = axes[1].annotate(annotation_string,
+                                ((LONGITUDE + rainier_lon)/2,(LATITUDE + rainier_lat)/2),
+                                textcoords="offset points",
+                                xytext=(5,-5),
+                                color="w",
+                                transform=ccrs.PlateCarree())
+    #Plot Mount Rainier
+    rainier_icon = axes[1].plot([rainier_lon],[rainier_lat],'c^',markersize=10,transform=ccrs.PlateCarree())
+    return [heading_label,rainier_icon,line_to_rainier]
 def update_map():
     global LATITUDE,LONGITUDE
     print(LATITUDE,LONGITUDE)
-    return axes[1].plot([LONGITUDE],[LATITUDE],'rX',markersize=10,transform=ccrs.PlateCarree())
+    obs_marker = axes[1].plot([LONGITUDE],[LATITUDE],'rX',markersize=10)
+    rainier_objects = []
+    if INIT_LAT == TIGER_MTN[0]:
+        rainier_objects = plot_rainier(46.8522616, -121.7603263)
+    return [obs_marker,*rainier_objects]
 
 def time_update(slider_position):
     global PLOT_TIME
@@ -204,7 +222,7 @@ def longitude_update(slider_position):
 def dist_at_time(sat, sky_obj,obs,time_at):
     time_at = ts.tt_jd(time_at)
     sat_alt,sat_az,_ = (sat - obs).at(time_at).altaz()
-    obj_alt,obj_az,_ = (moon - (earth+obs)).at(time_at).altaz()
+    obj_alt,obj_az,_ = (sky_obj - (earth+obs)).at(time_at).altaz()
 
     return angular_separation(sat_alt,obj_alt,sat_az,obj_az)
 def find_closest_approach(tle):
@@ -226,19 +244,17 @@ def find_closest_approach(tle):
     best_pass = None
     print("Iterating passes")
     for p in passes:
-        closest_moon_dist = 9999
-        closest_moon_time = 0
         pass_start = p['start'].tt
         pass_end = p['end'].tt
-        print("Test min")
-        closest = minimize(lambda x:dist_at_time(sat,moon,observer,x),
-                          (pass_start + pass_end)/2,
-                          bounds=((pass_start,pass_end),))
-        print("done testmin")
-        if best_pass is None or closest.fun < best_pass['dist']:
-            p['dist'] = closest.fun
-            p['best_time'] = ts.tt_jd(closest.x[0])
-            best_pass = p
+        moon_alt,_,_ = (moon - (earth+observer)).at(ts.tt_jd(pass_start)).altaz()
+        if moon_alt.degrees > 5:
+            closest = minimize(lambda x:dist_at_time(sat,moon,observer,x),
+                            (pass_start + pass_end)/2,
+                            bounds=((pass_start,pass_end),))
+            if best_pass is None or closest.fun < best_pass['dist']:
+                p['dist'] = closest.fun
+                p['best_time'] = ts.tt_jd(closest.x[0])
+                best_pass = p
     print("Done")
     return best_pass['best_time']
 def angular_separation(alt1,alt2,az1,az2):
@@ -256,9 +272,19 @@ def round_seconds(skyfield_time):
     time_utc = list(skyfield_time.utc)
     time_utc[5] = round(time_utc[5])
     return ts.utc(*time_utc)
+def get_tle_date(tle):
+    epoch = "20" + tle[0][18:32]
+    epoch_year = int(epoch[:4])
+    epoch_doy = float(epoch[4:])
+    epoch_dt = load.timescale().utc(epoch_year,1,epoch_doy)
+    return epoch_dt.utc_strftime()
+
 if __name__ == "__main__":
     STAR_MAG_LIMIT = 3
+
     SAT_SIZE = 0.1 #size to draw sats on starmap
+    plot_actual_size = True
+
     DURANGO = 37.273267,-107.871692, 2000
     LOS_ANGELES = 34.0,-118.2, 100
     BOULDER = 40.015, -105.270556,1655
@@ -266,9 +292,12 @@ if __name__ == "__main__":
     CAMBRIDGE = 42.371539,-71.098857, 20
     WHOI = 41.525089, -70.672410,0
     NYC = 40.712778, -74.006111,20
+    LIVERMORE = 44.383889, -70.249167, 198
+    MELBOURNE = 28.116667, -80.633333, 6
 
-    INIT_LAT,INIT_LON, ELEVATION = CAMBRIDGE
-    sat_tle = load_tle.get_tle(25544)
+    TIGER_MTN = 47.488097, -121.946962, 916
+    INIT_LAT,INIT_LON, ELEVATION = MELBOURNE
+    sat_tle = load_tle.get_tle(25544,1)
 
     LAT_RANGE = 2
     LON_RANGE = 2
@@ -276,7 +305,7 @@ if __name__ == "__main__":
     TIME_SLIDER_RANGE = 60
 
 
-    TIME = [2022, 7, 18, 0, 0,0] #Remember to use UTC!
+    TIME = [2022, 11, 17, 0, 0,0] #Remember to use UTC!
 
     DURATION = 10 #days to search through
 
@@ -286,7 +315,9 @@ if __name__ == "__main__":
     fig = plt.figure()
     axes = [None,None]
     axes[0] = fig.add_subplot(1,2,1)
-    axes[1] = fig.add_subplot(1,2,2, projection=ccrs.PlateCarree())
+    tle_epoch_date = get_tle_date(sat_tle)
+    axes[0].set_title(f"ISS passing in front of moon; TLE Epoch: {tle_epoch_date}")
+    axes[1] = fig.add_subplot(1,2,2) #The map of the area
 
     ts = load.timescale()
     global PLOT_TIME, LATITUDE, LONGITUDE

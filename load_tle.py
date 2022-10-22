@@ -17,6 +17,7 @@ def get_tle(ID_number, acceptable_age = 3):
         current_day_of_year = datetime.utcnow().timetuple().tm_yday
         current_epoch_day = str(current_year) + str(current_day_of_year)
         loaded_tle_epoch = "20" + loaded_tle[0][18:23]
+        print(loaded_tle)
         tle_age = float(current_epoch_day) - float(loaded_tle_epoch)
         if tle_age > acceptable_age:
             print("Re-fetching old TLE")
@@ -25,7 +26,8 @@ def get_tle(ID_number, acceptable_age = 3):
 def web_retrieve_tle(ID_number):
     ID_number = str(ID_number)
     session = requests.session()
-    page = session.get("https://www.celestrak.com/satcat/tle.php?CATNR=" + ID_number)
+    url = "https://www.celestrak.com/NORAD/elements/gp.php?CATNR=" + ID_number
+    page = session.get(url)
     sat_tle = page.text[:-2].split("\r\n")[1:]
     with open(ID_number + ".tle","w") as f:
         f.write("\n".join(sat_tle))

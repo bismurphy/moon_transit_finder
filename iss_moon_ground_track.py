@@ -4,8 +4,6 @@ from skyfield.positionlib import Geocentric
 from numpy.linalg import norm
 import load_tle
 import matplotlib.pyplot as plt
-import cartopy
-import cartopy.crs as ccrs
 import math
 
 def normalize(vector):
@@ -84,10 +82,9 @@ def draw_plot(matplotlib_axis, satellite, moon, timerange, annotate_line = True)
                                 (dp[1],dp[0]),
                                 textcoords="offset points",
                                 xytext=(5,-5),
-                                color="w",
-                                transform=ccrs.PlateCarree())
+                                color="w")
                 plotlats,plotlons = list(zip(*datapoints))[:2]
-                plotline = matplotlib_axis.plot(plotlons,plotlats,color="w",transform=ccrs.PlateCarree())
+                plotline = matplotlib_axis.plot(plotlons,plotlats,color="w")
                 datapoints = []
         if result is not None:
             lats.append(lat_result)
@@ -97,7 +94,7 @@ def draw_plot(matplotlib_axis, satellite, moon, timerange, annotate_line = True)
 
 if __name__ == "__main__":   
     ts = load.timescale()
-    time_range = ts.utc(2022,7,20,3,42,range(0,60,10))
+    time_range = ts.utc(2022,7,29,3,42,range(0,6000,10))
 
     planets = load('de421.bsp')
     earth = planets['earth']
@@ -109,16 +106,8 @@ if __name__ == "__main__":
     sat = EarthSatellite(*sat_tle)
     moon = moon - earth
 
-    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax = plt.axes()
     ax.set_facecolor("black")
-    ax.add_feature(cartopy.feature.COASTLINE,edgecolor='lightgreen')
-    states_provinces = cartopy.feature.NaturalEarthFeature(
-        category='cultural',
-        name='admin_1_states_provinces_lines',
-        scale='110m',
-        edgecolor='lightgreen',facecolor='none')
-    ax.add_feature(cartopy.feature.BORDERS,edgecolor='lightgreen')
-    ax.add_feature(states_provinces)
 
     draw_plot(ax, sat, moon, time_range)
     plt.show()
