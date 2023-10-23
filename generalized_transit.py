@@ -28,9 +28,10 @@ SEATTLE = 47.609722, -122.333056, 100
 CAMBRIDGE = 42.371539,-71.098857, 20
 WHOI = 41.525089, -70.672410,0
 NYC = 40.712778, -74.006111,20
+MELBOURNE = 28.116667, -80.633333, 0
 
-INIT_LAT,INIT_LON, ELEVATION = WHOI
-TARGET = "SUN"
+INIT_LAT,INIT_LON, ELEVATION = MELBOURNE
+TARGET = "MOON"
 
 
 sat_tle = load_tle.get_tle(25544,0.5)
@@ -41,9 +42,9 @@ LON_RANGE = 2
 TIME_SLIDER_RANGE = 60
 
 
-TIME = [2021, 10, 22, 0, 0,0] #Remember to use UTC!
+TIME = [2023, 10, 22, 0, 0,0] #Remember to use UTC!
 
-DURATION = 3 #days to search through
+DURATION = 5 #days to search through
 
 SAT_IMAGE = plt.imread('iss_white.png')
 MOON_IMAGE = plt.imread('moon.png')

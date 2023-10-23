@@ -296,7 +296,7 @@ if __name__ == "__main__":
     MELBOURNE = 28.116667, -80.633333, 6
 
     TIGER_MTN = 47.488097, -121.946962, 916
-    INIT_LAT,INIT_LON, ELEVATION = MELBOURNE
+    INIT_LAT,INIT_LON, ELEVATION = 35.132222, -118.448889,1210
     sat_tle = load_tle.get_tle(25544,1)
 
     LAT_RANGE = 2
@@ -305,7 +305,7 @@ if __name__ == "__main__":
     TIME_SLIDER_RANGE = 60
 
 
-    TIME = [2022, 11, 17, 0, 0,0] #Remember to use UTC!
+    TIME = [2022, 12, 2, 0, 0,0] #Remember to use UTC!
 
     DURATION = 10 #days to search through
 
