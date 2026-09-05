@@ -1,0 +1,16 @@
+[project]
+name = "numpy"
+version = "2.4.4"
+description = "the numpy library"
+authors = [
+    {name = "Your Name",email = "you@example.com"}
+]
+license = "custom"
+requires-python = "3.12"
+dependencies = [
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

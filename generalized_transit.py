@@ -15,12 +15,14 @@ import numpy as np
 from matplotlib.widgets import Slider, Button
 import cartopy
 import cartopy.crs as ccrs
-import requests
+import time
 import load_tle
 import iss_moon_ground_track
 
 STAR_MAG_LIMIT = 3
-SAT_SIZE = 0.1 #size to draw sats on starmap
+# Length to draw satellite at (in meters)
+SAT_SIZE = 100
+
 DURANGO = 37.273267,-107.871692, 2000
 LOS_ANGELES = 34.0,-118.2, 100
 BOULDER = 40.015, -105.270556,1655
@@ -29,12 +31,14 @@ CAMBRIDGE = 42.371539,-71.098857, 20
 WHOI = 41.525089, -70.672410,0
 NYC = 40.712778, -74.006111,20
 MELBOURNE = 28.116667, -80.633333, 0
+FRAMINGHAM = 42.279167, -71.416667, 50
 
-INIT_LAT,INIT_LON, ELEVATION = MELBOURNE
+INIT_LAT,INIT_LON, ELEVATION = FRAMINGHAM
 TARGET = "MOON"
 
-
-sat_tle = load_tle.get_tle(25544,0.5)
+print("Getting TLE")
+sat_tle = load_tle.get_tle(25544,2)
+print("Got TLE")
 
 LAT_RANGE = 2
 LON_RANGE = 2
@@ -42,9 +46,9 @@ LON_RANGE = 2
 TIME_SLIDER_RANGE = 60
 
 
-TIME = [2023, 10, 22, 0, 0,0] #Remember to use UTC!
+TIME = [2026, 9, 4, 0, 0,0] #Remember to use UTC!
 
-DURATION = 5 #days to search through
+DURATION = 7 #days to search through
 
 SAT_IMAGE = plt.imread('iss_white.png')
 MOON_IMAGE = plt.imread('moon.png')
@@ -134,7 +138,10 @@ def plot_sat(TLE, image, timestamp):
 
     prev_alt,prev_az,prev_dist = (sat - ground).at(a_bit_ago).altaz()
     trail = axes[0].plot([prev_az.degrees,az.degrees],[prev_alt.degrees,alt.degrees],color='w')
-    stamp = plot_stamp(az.degrees, alt.degrees, image, SAT_SIZE,zorder=0.6)
+    # Convert size in m to half size in km
+    half_size = SAT_SIZE / 2000
+    radius = np.rad2deg(np.arctan2(half_size, dist.km))
+    stamp = plot_stamp(az.degrees, alt.degrees, image, radius,zorder=0.6)
     return [trail,stamp]
 def plot_moon(image,timestamp):
     global LATITUDE,LONGITUDE
@@ -251,13 +258,19 @@ def longitude_update(slider_position):
     update_plot(PLOT_TIME)#And now replot everything.
 def find_closest_approach(tle, celestial_object):
     global LATITUDE,LONGITUDE
+    func_start = time.perf_counter()
+    print("Into function")
     sat = EarthSatellite(*tle)
     observer = Topos(LATITUDE,LONGITUDE, elevation_m = ELEVATION)
     start = ts.utc(*TIME)
     end = ts.tt_jd(start.tt + DURATION)
     times_and_events = sat.find_events(observer, start, end)
+    print("Found events")
+    print(time.perf_counter() - func_start)
+
     passes = []
     last_start = 0
+    
     for i in zip(*times_and_events):
         event_time = i[0]
         event_type = i[1]
@@ -266,23 +279,26 @@ def find_closest_approach(tle, celestial_object):
         #double check that we've had a start
         if event_type == 2 and last_start != 0:
             passes.append([last_start,event_time])
+    print("Filtered passes")
+    print(time.perf_counter() - func_start)
     closest_dist = 9999
     closest_time = 0
     for p in passes:
-        alts = []
-        azes = []	
-        drawtime = p[0]
-        while(drawtime.tt < p[1].tt):
-            drawtime = ts.tt_jd(drawtime.tt + 1/86400)
-            alt,az,_ = (sat - observer).at(drawtime).altaz()
-            cel_alt,cel_az,_ = (celestial_object - (earth+observer)).at(drawtime).altaz()
-            if cel_alt.degrees < 5:
-                break #break out if the object
-            #this is not proper math but good enough heuristic for now
-            ang_dist = angular_separation(alt,cel_alt,az,cel_az)
-            if ang_dist < closest_dist and alt.degrees > 10 and cel_alt.degrees > 10:
-                closest_dist = ang_dist
-                closest_time = drawtime
+        timerange = ts.tt_jd(np.arange(p[0].tt, p[1].tt, 1/86400))
+        alt,az,_ = (sat - observer).at(timerange).altaz()
+        cel_alt,cel_az,_ = (celestial_object - (earth+observer)).at(timerange).altaz()
+
+        #this is not proper math but good enough heuristic for now
+        ang_dist = angular_separation(alt,cel_alt,az,cel_az)
+        closest_in_pass = np.min(ang_dist)
+        if closest_in_pass < closest_dist:
+            close_idx = np.argmin(ang_dist)
+            closest_time = timerange[close_idx]
+            closest_dist = closest_in_pass
+    print("Main loop done")
+    print(time.perf_counter() - func_start)
+    print("Main loop done")
+    print(time.perf_counter() - func_start)
     if closest_time == 0:
         return None
     return closest_time
@@ -302,6 +318,7 @@ def round_seconds(skyfield_time):
     time_utc[5] = round(time_utc[5])
     return ts.utc(*time_utc)
 
+start = time.perf_counter()
 fig = plt.figure()
 axes = [None,None]
 axes[0] = fig.add_subplot(1,2,1)
@@ -315,15 +332,19 @@ earth = planets['earth']
 moon = planets['moon']
 sun = planets['sun']
 target = sun if TARGET == "SUN" else moon
+print("Init complete")
+print(time.perf_counter() - start)
 raw_closest = find_closest_approach(sat_tle,target)
-print(raw_closest)
+print("Closest found")
+print(time.perf_counter() - start)
 PLOT_TIME = round_seconds(raw_closest)
 sliders = setup_plot()#assign to variable to keep them alive
 sat = EarthSatellite(*sat_tle)
 timerange = np.linspace(PLOT_TIME.tt - 60/86400, PLOT_TIME.tt + 60/86400,25)
 timerange = [ts.tt_jd(value) for value in timerange]
 draw_line_on_map = iss_moon_ground_track.draw_plot(axes[1],sat,target - earth, timerange)
-
+print("Plot prepared")
+print(time.perf_counter() - start)
 
 global plotted_objects
 plotted_objects = []
