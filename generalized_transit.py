@@ -297,8 +297,6 @@ def find_closest_approach(tle, celestial_object):
             closest_dist = closest_in_pass
     print("Main loop done")
     print(time.perf_counter() - func_start)
-    print("Main loop done")
-    print(time.perf_counter() - func_start)
     if closest_time == 0:
         return None
     return closest_time
