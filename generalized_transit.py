@@ -23,32 +23,29 @@ STAR_MAG_LIMIT = 3
 # Length to draw satellite at (in meters)
 SAT_SIZE = 100
 
-DURANGO = 37.273267,-107.871692, 2000
-LOS_ANGELES = 34.0,-118.2, 100
-BOULDER = 40.015, -105.270556,1655
-SEATTLE = 47.609722, -122.333056, 100
-CAMBRIDGE = 42.371539,-71.098857, 20
-WHOI = 41.525089, -70.672410,0
-NYC = 40.712778, -74.006111,20
-MELBOURNE = 28.116667, -80.633333, 0
-FRAMINGHAM = 42.279167, -71.416667, 50
+with open("WHEREWHEN.txt") as f:
+    lines = f.readlines()
+    for line in lines:
+        if line.startswith("WHERE = "):
+            LOCATION = [float(x) for x in line.split(" = ")[1].split(",")]
+        if line.startswith("WHEN = "):
+            TIME = [float(x) for x in line.split(" = ")[1].split(",")]
+DURATION = 7 #days to search through
 
-INIT_LAT,INIT_LON, ELEVATION = FRAMINGHAM
+
+INIT_LAT,INIT_LON, ELEVATION = LOCATION
 TARGET = "MOON"
 
-print("Getting TLE")
-sat_tle = load_tle.get_tle(25544,2)
-print("Got TLE")
 
 LAT_RANGE = 2
 LON_RANGE = 2
 #seconds you can scroll before and after start time
 TIME_SLIDER_RANGE = 60
 
-
-TIME = [2026, 9, 4, 0, 0,0] #Remember to use UTC!
-
-DURATION = 7 #days to search through
+# Load assets: TLE and images
+print("Getting TLE")
+sat_tle = load_tle.get_tle(25544,2)
+print("Got TLE")
 
 SAT_IMAGE = plt.imread('iss_white.png')
 MOON_IMAGE = plt.imread('moon.png')
